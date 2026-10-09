@@ -1,0 +1,571 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1d2a24">
+<title>Coletor de Inventário</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: uma coluna de coletor de mão — cadastro, leitor, ficha do produto, quantidade, lista e exportação */
+:root{
+  --bg:#eef1ee; --panel:#ffffff; --ink:#1d2a24; --muted:#5f6d66; --line:#d3dad5;
+  --accent:#e8a317; --accent-ink:#1d2a24; --ok:#2f7d4f; --ok-bg:#e3f1e8; --bad:#b83a2e; --bad-bg:#f8e3e0; --dark:#1d2a24;
+  --display:"Barlow Condensed","Arial Narrow",sans-serif;
+  --body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#121815; --panel:#1b2420; --ink:#e7ece9; --muted:#9aa8a1; --line:#2c3833;
+  --accent:#f0b336; --accent-ink:#1d2a24; --ok:#5cb985; --ok-bg:#183326; --bad:#e2685b; --bad-bg:#3a1c18; --dark:#0b100e; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#121815; --panel:#1b2420; --ink:#e7ece9; --muted:#9aa8a1; --line:#2c3833;
+  --accent:#f0b336; --accent-ink:#1d2a24; --ok:#5cb985; --ok-bg:#183326; --bad:#e2685b; --bad-bg:#3a1c18; --dark:#0b100e; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.4 var(--body);-webkit-tap-highlight-color:transparent}
+.wrap{max-width:560px;margin:0 auto;padding-inline:16px;padding-block:12px 40px;display:flex;flex-direction:column;gap:14px}
+header{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
+h1{font:700 1.7rem/1 var(--display);letter-spacing:.02em;text-transform:uppercase;margin:0}
+h1 span{color:var(--accent)}
+.meta{font:500 .78rem var(--mono);color:var(--muted)}
+.label{font:600 .72rem var(--body);text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:10px}
+input,select{font:inherit;color:var(--ink);background:var(--bg);border:1.5px solid var(--line);border-radius:8px;padding:10px 12px;width:100%;min-width:0}
+input:focus,select:focus{outline:none;border-color:var(--accent)}
+button{font:600 1rem var(--body);border-radius:8px;padding:12px 14px;cursor:pointer;color:var(--ink);background:var(--bg);border:1.5px solid var(--line)}
+button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+button.dark{background:var(--dark);color:#fff;border-color:var(--dark)}
+button.danger{background:var(--bad);color:#fff;border-color:var(--bad)}
+button:disabled{opacity:.4;cursor:not-allowed}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.row>*{flex:1 1 0}
+p{margin:0}
+/* cadastro */
+.base{flex-direction:row;align-items:center;gap:12px;flex-wrap:wrap}
+.base .info{flex:1 1 200px;min-width:0}
+.base b{font:700 1rem var(--mono)}
+.base.missing{border:2px dashed var(--bad)}
+.filebtn{position:relative;overflow:hidden;display:inline-flex;align-items:center;justify-content:center;font-weight:600;border-radius:8px;padding:10px 14px;background:var(--dark);color:#fff;cursor:pointer}
+.filebtn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+/* leitor */
+.scanner{position:relative;background:#000;border-radius:10px;overflow:hidden;aspect-ratio:4/3;max-width:100%}
+.scanner video{width:100%;height:100%;object-fit:cover;display:block}
+.scanner .aim{position:absolute;left:8%;right:8%;top:38%;height:24%;border:2px solid var(--accent);border-radius:6px;box-shadow:0 0 0 999px rgba(0,0,0,.35)}
+.scanner .aim::after{content:"";position:absolute;left:0;right:0;top:50%;height:2px;background:#e2685b;opacity:.85}
+.scanner .msg{position:absolute;inset:auto 0 0 0;padding:8px 12px;color:#fff;font:500 .85rem var(--body);background:linear-gradient(transparent,rgba(0,0,0,.7))}
+.scanner.flash .aim{border-color:#5cb985;box-shadow:0 0 0 999px rgba(47,125,79,.35)}
+.scanner.err .aim{border-color:#e2685b;box-shadow:0 0 0 999px rgba(184,58,46,.4)}
+/* entrada */
+.seg{display:flex;border:1.5px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{flex:1;border:0;border-radius:0;padding:8px;font-size:.9rem;background:transparent}
+.seg button[aria-pressed="true"]{background:var(--dark);color:#fff}
+.code{font:700 1.3rem var(--mono);letter-spacing:.03em}
+.qty{font:700 2rem var(--mono);text-align:center;padding:8px}
+/* ficha do produto */
+.card{border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:4px;border:1.5px solid var(--line)}
+.card.ok{background:var(--ok-bg);border-color:var(--ok)}
+.card.bad{background:var(--bad-bg);border-color:var(--bad)}
+.card .cod{font:700 1.5rem/1.1 var(--mono)}
+.card .desc{font-weight:600}
+.card .sub{font-size:.85rem;color:var(--muted)}
+.card .err{font:700 1.15rem var(--display);text-transform:uppercase;letter-spacing:.03em;color:var(--bad)}
+.tag{display:inline-block;font:700 .72rem var(--body);letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:4px;background:var(--dark);color:#fff;margin-right:6px}
+.tag.dun{background:var(--accent);color:var(--accent-ink)}
+.choices{display:flex;flex-direction:column;gap:6px}
+.choices button{text-align:left;font-weight:500;font-size:.9rem;padding:8px 10px}
+.conv{font:700 1rem var(--mono);color:var(--ok);text-align:center;min-height:1.4em}
+.hint{font-size:.85rem;color:var(--muted)}
+.warn{color:var(--bad);font-weight:600}
+/* lista */
+.totals{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.totals b{font:700 1.4rem var(--mono);display:block;font-variant-numeric:tabular-nums}
+.totals .nf b{color:var(--bad)}
+ul.items{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+ul.items li{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line)}
+ul.items li:first-child{border-top:0}
+ul.items li.nf .ic{color:var(--bad)}
+.ic{font:600 .95rem var(--mono);overflow-wrap:anywhere;min-width:0}
+.id{font-size:.85rem;overflow-wrap:anywhere}
+.it{font-size:.75rem;color:var(--muted)}
+.iq{font:700 1.1rem var(--mono);font-variant-numeric:tabular-nums;text-align:right}
+.del{padding:6px 10px;font-size:.85rem;color:var(--bad)}
+.empty{color:var(--muted);text-align:center;padding:14px 0}
+details summary{cursor:pointer;font-weight:600}
+details[open] summary{margin-bottom:10px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.grid2 label{display:flex;flex-direction:column;gap:4px;min-width:0}
+.check{display:flex;align-items:flex-start;gap:8px;font-size:.95rem}
+.check input{width:auto;margin-top:4px}
+pre.preview{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;font:500 .85rem var(--mono);max-height:160px;overflow:auto;margin:0;white-space:pre}
+.confirm{border:2px solid var(--bad);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--dark);color:#fff;padding:10px 16px;border-radius:8px;font-weight:600;max-width:90vw;text-align:center;z-index:9}
+.toast.bad{background:var(--bad)}
+@media (prefers-reduced-motion:no-preference){.scanner .aim{transition:all .15s}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Coletor <span>Inventário</span></h1>
+    <span class="meta" id="status"></span>
+  </header>
+
+  <!-- CADASTRO -->
+  <section class="panel base" id="basePanel" aria-label="Cadastro de produtos">
+    <div class="info">
+      <span class="label">Cadastro de produtos (8539)</span>
+      <p id="baseInfo">Carregando…</p>
+    </div>
+    <label class="filebtn"><span id="baseBtnTxt">Carregar .csv</span><input type="file" id="baseFile" accept=".csv,.txt,text/csv,text/plain"></label>
+  </section>
+
+  <section class="panel" aria-label="Identificação da contagem">
+    <div class="grid2">
+      <label><span class="label">Nº do inventário *</span><input id="inv" inputmode="numeric" maxlength="5" placeholder="Ex.: 22710" class="code"></label>
+      <label><span class="label">Contagem</span><select id="contagem"><option value="0">Não informar (000000)</option><option value="1">1ª contagem</option><option value="2">2ª contagem</option><option value="3">3ª contagem</option></select></label>
+      <label><span class="label">Local / endereço</span><input id="local" placeholder="Ex.: RUA 12"></label>
+      <label><span class="label">Contador</span><input id="operador" placeholder="Nome"></label>
+    </div>
+  </section>
+
+  <!-- LEITURA -->
+  <section class="panel" aria-label="Leitura">
+    <div class="scanner" id="scanner" hidden>
+      <video id="video" playsinline muted></video>
+      <div class="aim"></div>
+      <div class="msg" id="scanMsg">Aponte para o código de barras</div>
+    </div>
+    <div class="row">
+      <button class="dark" id="btnCam">Abrir câmera</button>
+      <button id="btnTorch" hidden>Lanterna</button>
+    </div>
+
+    <div class="seg" role="group" aria-label="Tipo de código">
+      <button id="modeBar" aria-pressed="true">Código de barras</button>
+      <button id="modeInt" aria-pressed="false">Código interno</button>
+    </div>
+    <input id="code" class="code" inputmode="numeric" autocomplete="off" placeholder="Leia ou digite" aria-label="Código">
+
+    <div id="card" class="card" hidden></div>
+
+    <label for="qty" class="label" id="qtyLabel">Quantidade</label>
+    <input id="qty" class="qty" inputmode="decimal" autocomplete="off" placeholder="0">
+    <div class="conv" id="conv"></div>
+    <button class="primary" id="btnAdd">Lançar</button>
+    <button class="danger" id="btnNF" hidden>Registrar como não encontrado</button>
+  </section>
+
+  <!-- CONTAGEM -->
+  <section class="panel" aria-label="Contagem">
+    <div class="totals">
+      <div><span class="label">Leituras</span><b id="tLin">0</b></div>
+      <div><span class="label">Produtos</span><b id="tCod">0</b></div>
+      <div class="nf"><span class="label">Não encontr.</span><b id="tNF">0</b></div>
+    </div>
+    <input id="search" placeholder="Buscar na contagem (código, barras ou descrição)" aria-label="Buscar na contagem">
+    <ul class="items" id="list"></ul>
+    <p class="hint" id="listNote"></p>
+  </section>
+
+  <!-- EXPORTAR -->
+  <section class="panel" aria-label="Exportar">
+    <div class="row">
+      <button class="primary" id="btnTxt">Baixar TXT</button>
+      <button id="btnShare">Enviar (WhatsApp, e-mail…)</button>
+    </div>
+    <button id="btnTxtNF" hidden>Baixar não encontrados</button>
+    <details>
+      <summary>Formato do arquivo</summary>
+      <div class="grid2" id="sepOpts">
+        <label><span class="label">Separador</span>
+          <select id="sep"><option value=";">Ponto e vírgula ( ; )</option><option value=",">Vírgula ( , )</option><option value="\t">Tabulação</option><option value="|">Barra ( | )</option></select></label>
+        <label><span class="label">Decimal</span>
+          <select id="dec"><option value=",">Vírgula (1,5)</option><option value=".">Ponto (1.5)</option></select></label>
+      </div>
+      <label><span class="label">Layout</span>
+        <select id="layout"><option value="1147">Winthor 1147 · posições fixas (37 caracteres)</option><option value="sep">Separado por caractere</option></select></label>
+      <p class="hint" id="layoutNote"></p>
+      <label class="check"><input type="checkbox" id="dunConv" checked> <span>Ao ler o DUN (caixa master), contar em caixas e converter pela QTUNITCX</span></label>
+      <label class="check"><input type="checkbox" id="sum" checked> <span>Somar produtos repetidos (uma linha por código interno)</span></label>
+      <div id="sepOpts2" style="display:contents">
+      <label class="check"><input type="checkbox" id="head"> <span>Incluir cabeçalho</span></label>
+      <label class="check"><input type="checkbox" id="withLocal"> <span>Incluir coluna de local</span></label>
+      <label class="check"><input type="checkbox" id="withDesc"> <span>Incluir descrição</span></label>
+      </div>
+      <span class="label">Prévia</span>
+      <pre class="preview" id="preview"></pre>
+    </details>
+    <button id="btnClear">Zerar contagem</button>
+    <div class="confirm" id="confirmBox" hidden>
+      <p class="warn">Apagar todas as leituras deste aparelho? Baixe o TXT antes.</p>
+      <div class="row"><button id="btnNo">Cancelar</button><button class="danger" id="btnYes">Apagar tudo</button></div>
+    </div>
+  </section>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const KEY = 'coletor_inv_v2';
+
+  // ================= estado da contagem (localStorage)
+  let state = { items: [], inv:'', contagem:'0', local:'', operador:'', mode:'bar',
+    cfg:{layout:'1147',sep:';',dec:',',dunConv:true,sum:true,head:false,withLocal:false,withDesc:false} };
+  try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.items) state = Object.assign(state, s, {cfg:Object.assign(state.cfg, s.cfg||{})}); } catch(e){}
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch(e){ toast('Memória do navegador cheia — baixe o TXT agora', true); } };
+
+  // ================= cadastro (IndexedDB)
+  let base = null;          // {rows:[[cod,desc,emb,status,ean,dun,fator]], name, date}
+  let byBar = new Map();    // código de barras normalizado -> [{i, tipo}]
+  let byCod = new Map();    // CODPROD -> i
+
+  function idb(){ return new Promise((ok,fail)=>{ const r=indexedDB.open('coletor_inventario',1); r.onupgradeneeded=()=>r.result.createObjectStore('kv'); r.onsuccess=()=>ok(r.result); r.onerror=()=>fail(r.error); }); }
+  async function idbGet(k){ const db=await idb(); return new Promise((ok,fail)=>{ const q=db.transaction('kv').objectStore('kv').get(k); q.onsuccess=()=>ok(q.result); q.onerror=()=>fail(q.error); }); }
+  async function idbSet(k,v){ const db=await idb(); return new Promise((ok,fail)=>{ const t=db.transaction('kv','readwrite'); t.objectStore('kv').put(v,k); t.oncomplete=()=>ok(); t.onerror=()=>fail(t.error); }); }
+
+  const normBar = s => { s = String(s||'').trim(); if(/^\d+$/.test(s)) s = s.replace(/^0+/,''); return s; };
+
+  function buildIndex(){
+    byBar = new Map(); byCod = new Map();
+    base.rows.forEach((r,i)=>{
+      byCod.set(String(r[0]).trim(), i);
+      const e = normBar(r[4]), d = normBar(r[5]);
+      const put = (k,tipo)=>{ if(!k) return; const a=byBar.get(k)||[]; if(!a.some(x=>x.i===i)) a.push({i,tipo}); byBar.set(k,a); };
+      put(e,'EAN');
+      if(d && d!==e) put(d,'DUN');
+    });
+  }
+
+  function parseBase(text){
+    // o relatório termina linhas com CRLF; quebra de linha solta (LF) dentro da descrição vira espaço
+    const lines = (text.includes('\r\n') ? text.split('\r\n').map(l=>l.replace(/[\r\n]+/g,' ')) : text.split('\n')).filter(l=>l.trim());
+    const head = lines[0].split(';').map(h=>h.trim().toUpperCase());
+    const col = n => head.indexOf(n);
+    const c = {cod:col('CODPROD'),desc:col('DESCRICAO'),emb:col('EMBALAGEM'),st:col('STATUS'),ean:col('EAN'),dun:col('DUN'),cx:col('QTUNITCX')};
+    if(c.cod<0 || c.ean<0) throw new Error('O arquivo precisa ter as colunas CODPROD e EAN (relatório 8539).');
+    const n = head.length, rows=[];
+    for(let k=1;k<lines.length;k++){
+      let f = lines[k].split(';');
+      if(f.length>n && c.desc>=0){ const extra=f.length-n; f = f.slice(0,c.desc).concat([f.slice(c.desc,c.desc+extra+1).join(';')], f.slice(c.desc+extra+1)); }
+      const cod=(f[c.cod]||'').trim(); if(!/^\d+$/.test(cod)) continue;
+      rows.push([cod,(f[c.desc]||'').trim(),(f[c.emb]||'').trim(),(f[c.st]||'').trim(),(f[c.ean]||'').trim(),c.dun>=0?(f[c.dun]||'').trim():'',Math.max(1,Number((f[c.cx]||'1').replace(',','.'))||1)]);
+    }
+    if(!rows.length) throw new Error('Nenhum produto encontrado no arquivo.');
+    return rows;
+  }
+
+  $('baseFile').onchange = async e => {
+    const file = e.target.files[0]; if(!file) return;
+    $('baseInfo').textContent='Lendo arquivo…';
+    try{
+      const buf = await file.arrayBuffer(); let text;
+      try{ text = new TextDecoder('utf-8',{fatal:true}).decode(buf); }catch(_){ text = new TextDecoder('windows-1252').decode(buf); }
+      const rows = parseBase(text);
+      base = {rows, name:file.name, date:Date.now()};
+      buildIndex(); renderBase();
+      try{ await idbSet('base', base); }catch(_){ toast('Cadastro carregado, mas não foi salvo no aparelho', true); }
+      toast(`Cadastro carregado: ${rows.length.toLocaleString('pt-BR')} produtos`);
+      relink(); resolve(true);
+    }catch(err){ toast(err.message||'Não foi possível ler o arquivo', true); renderBase(); }
+    e.target.value='';
+  };
+  function renderBase(){
+    const p=$('basePanel');
+    if(!base){ p.classList.add('missing'); $('baseInfo').innerHTML='<span class="warn">Nenhum cadastro carregado.</span> Carregue o .csv da 8539 para vincular os códigos.'; $('baseBtnTxt').textContent='Carregar .csv'; }
+    else { p.classList.remove('missing'); $('baseInfo').innerHTML=`<b>${base.rows.length.toLocaleString('pt-BR')}</b> produtos · ${esc(base.name)}<br><span class="hint">carregado em ${new Date(base.date).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'})}</span>`; $('baseBtnTxt').textContent='Trocar cadastro'; }
+  }
+  // se o cadastro for trocado, tenta vincular de novo os não encontrados
+  function relink(){
+    let n=0;
+    for(const it of state.items){ if(it.nf){ const m=byBar.get(normBar(it.bar)); if(m && m.length===1){ const r=base.rows[m[0].i]; it.nf=false; it.cod=r[0]; it.desc=r[1]; it.tipo=m[0].tipo; it.fator=1; it.qty=it.qtdInf; n++; } } }
+    if(n){ save(); render(); toast(`${n} não encontrado(s) vinculado(s) com o novo cadastro`); }
+  }
+
+  // ================= util
+  function toast(t,bad){ const el=$('toast'); el.textContent=t; el.className='toast'+(bad?' bad':''); el.hidden=false; clearTimeout(toast.t); toast.t=setTimeout(()=>el.hidden=true,bad?3500:2200); }
+  function parseQty(v){ v=String(v).trim().replace(/\s/g,''); if(!v) return NaN; if(v.includes(',')) v=v.replace(/\./g,'').replace(',','.'); return Number(v); }
+  function fmt(n,dec){ let s = Number.isInteger(n) ? String(n) : String(+n.toFixed(4)); return (dec||state.cfg.dec)===',' ? s.replace('.',',') : s; }
+  let actx=null;
+  function tone(freqs,dur){ try{ actx=actx||new (window.AudioContext||window.webkitAudioContext)(); let t=actx.currentTime; for(const f of freqs){ const o=actx.createOscillator(),g=actx.createGain(); o.frequency.value=f; g.gain.value=.18; o.connect(g); g.connect(actx.destination); o.start(t); o.stop(t+dur); t+=dur+.04; } }catch(e){} }
+  const beepOk = ()=>{ tone([1800],.09); navigator.vibrate&&navigator.vibrate(60); };
+  const beepErr = ()=>{ tone([420,300],.18); navigator.vibrate&&navigator.vibrate([200,80,200]); };
+  const esc = s => String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const unitOf = emb => { const m=String(emb).split('/'); return (m[2]||'UN').trim(); };
+
+  // ================= cabeçalho e config
+  $('local').value = state.local; $('operador').value = state.operador;
+  $('local').oninput = e => { state.local = e.target.value; save(); renderPreview(); };
+  $('operador').oninput = e => { state.operador = e.target.value; save(); };
+  $('inv').value = state.inv; $('contagem').value = state.contagem;
+  $('inv').oninput = e => { e.target.value = e.target.value.replace(/\D/g,'').slice(0,5); state.inv = e.target.value; save(); renderInv(); renderPreview(); };
+  $('contagem').onchange = e => { state.contagem = e.target.value; save(); renderPreview(); };
+  function renderInv(){ $('inv').style.borderColor = state.inv ? '' : 'var(--bad)'; }
+  const cfgEls = {layout:'value',sep:'value',dec:'value',dunConv:'checked',sum:'checked',head:'checked',withLocal:'checked',withDesc:'checked'};
+  for (const k in cfgEls){ $(k)[cfgEls[k]] = state.cfg[k]; $(k).onchange = e => { state.cfg[k] = e.target[cfgEls[k]]; save(); render(); updateConv(); }; }
+
+  function setMode(m){ state.mode=m; save(); $('modeBar').setAttribute('aria-pressed',m==='bar'); $('modeInt').setAttribute('aria-pressed',m==='int'); $('code').placeholder = m==='bar'?'Leia ou digite o código de barras':'Digite o código interno'; clearSel(); $('code').focus(); }
+  $('modeBar').onclick=()=>setMode('bar'); $('modeInt').onclick=()=>setMode('int');
+
+  // ================= resolução do produto
+  let sel = null; // {status:'ok'|'nf'|'amb'|'nobase', bar, tipo, i, opts}
+  function clearSel(){ sel=null; $('card').hidden=true; $('btnNF').hidden=true; $('btnAdd').disabled=false; $('qtyLabel').textContent='Quantidade'; updateConv(); }
+
+  function resolve(silent){
+    const raw = $('code').value.trim();
+    if(!raw){ clearSel(); return null; }
+    if(sel && sel.raw===raw) return sel;
+    if(!base){ sel={status:'nobase',raw}; }
+    else if(state.mode==='int'){
+      const i = byCod.get(raw.replace(/^0+/,'')) ?? byCod.get(raw);
+      sel = i===undefined ? {status:'nf',raw,bar:raw} : {status:'ok',raw,bar:'',tipo:'INT',i};
+    } else {
+      const m = byBar.get(normBar(raw));
+      if(!m) sel={status:'nf',raw,bar:raw};
+      else if(m.length===1) sel={status:'ok',raw,bar:raw,tipo:m[0].tipo,i:m[0].i};
+      else sel={status:'amb',raw,bar:raw,opts:m};
+    }
+    renderCard();
+    if(!silent){ if(sel.status==='ok') beepOk(); else beepErr(); }
+    return sel;
+  }
+
+  function renderCard(){
+    const c=$('card'); c.hidden=false; $('btnNF').hidden=true; $('btnAdd').disabled=false;
+    if(sel.status==='nobase'){ c.className='card bad'; c.innerHTML='<span class="err">Cadastro não carregado</span><span class="sub">Carregue o .csv da 8539 no topo da tela.</span>'; $('btnAdd').disabled=true; }
+    else if(sel.status==='nf'){
+      c.className='card bad';
+      c.innerHTML=`<span class="err">Código não encontrado no cadastro</span><span class="cod">${esc(sel.raw)}</span><span class="sub">${state.mode==='int'?'Confira o código interno digitado.':'Confira se leu o código certo ou tente pelo código interno. Se o produto existir fisicamente, registre como não encontrado para tratar depois.'}</span>`;
+      $('btnAdd').disabled=true; $('btnNF').hidden=false;
+      flashScanner('err');
+    }
+    else if(sel.status==='amb'){
+      c.className='card bad';
+      c.innerHTML=`<span class="err">Código ligado a ${sel.opts.length} produtos</span><span class="sub">Toque no produto que está na sua mão:</span><div class="choices">${sel.opts.map((o,k)=>{const r=base.rows[o.i];return `<button data-k="${k}"><b>${esc(r[0])}</b> · ${esc(r[1])} <span class="sub">(${esc(r[2])} · ${o.tipo})</span></button>`;}).join('')}</div>`;
+      $('btnAdd').disabled=true;
+      c.querySelectorAll('button[data-k]').forEach(b=>b.onclick=()=>{ const o=sel.opts[+b.dataset.k]; sel={status:'ok',raw:sel.raw,bar:sel.bar,tipo:o.tipo,i:o.i}; renderCard(); $('qty').focus(); });
+    }
+    else {
+      const r=base.rows[sel.i]; const isDun = sel.tipo==='DUN';
+      c.className='card ok';
+      const prev = state.items.filter(it=>!it.nf && it.cod===r[0]);
+      const prevTot = prev.reduce((a,it)=>a+it.qty,0);
+      c.innerHTML=`<span><span class="tag ${isDun?'dun':''}">${sel.tipo==='INT'?'Cód. interno':isDun?'DUN · caixa master':'EAN · unidade'}</span>${r[3]?`<span class="sub">${esc(r[3])}</span>`:''}</span>
+        <span class="cod">${esc(r[0])}</span><span class="desc">${esc(r[1])}</span>
+        <span class="sub">Embalagem ${esc(r[2])} · caixa master com ${fmt(r[6])}</span>
+        ${prev.length?`<span class="warn">Já contado ${prev.length}x (total ${fmt(prevTot)} ${esc(unitOf(r[2]))}). Este lançamento soma.</span>`:''}`;
+    }
+    updateConv();
+  }
+
+  function convInfo(){
+    if(!sel || sel.status!=='ok') return {fator:1};
+    const r=base.rows[sel.i];
+    if(sel.tipo==='DUN' && state.cfg.dunConv && r[6]>1) return {fator:r[6], un:unitOf(r[2])};
+    return {fator:1, un:unitOf(r[2])};
+  }
+  function updateConv(){
+    const ci=convInfo(); const q=parseQty($('qty').value);
+    $('qtyLabel').textContent = ci.fator>1 ? `Quantidade de caixas master (1 cx = ${fmt(ci.fator)} ${ci.un})` : 'Quantidade';
+    $('conv').textContent = (ci.fator>1 && isFinite(q)) ? `= ${fmt(q*ci.fator)} ${ci.un}` : '';
+  }
+
+  // ================= eventos de entrada
+  $('code').addEventListener('input', ()=>{ sel=null; $('card').hidden=true; $('btnNF').hidden=true; $('btnAdd').disabled=false; updateConv(); });
+  $('code').addEventListener('keydown', e => { if(e.key==='Enter'){ e.preventDefault(); const s=resolve(); if(s && s.status!=='amb' && s.status!=='nobase'){ $('qty').focus(); $('qty').select(); } } });
+  $('code').addEventListener('blur', ()=>{ if($('code').value.trim() && !sel) resolve(true); });
+  $('qty').addEventListener('input', updateConv);
+  $('qty').addEventListener('keydown', e => { if(e.key==='Enter'){ e.preventDefault(); add(); } });
+  $('btnAdd').onclick = add;
+  $('btnNF').onclick = addNF;
+
+  function readQty(){ const q=parseQty($('qty').value); if(!isFinite(q)||q<0){ toast('Digite a quantidade', true); $('qty').focus(); return null; } return q; }
+  function afterAdd(msg){ save(); render(); $('code').value=''; $('qty').value=''; clearSel(); toast(msg); if(cam.on) resumeScan(); else $('code').focus(); }
+
+  function add(){
+    if(!$('code').value.trim()){ toast('Leia ou digite o código', true); $('code').focus(); return; }
+    const s = resolve(true);
+    if(s.status==='nf'){ beepErr(); toast('Código não encontrado — não dá para lançar', true); return; }
+    if(s.status==='amb'){ toast('Escolha o produto na lista', true); return; }
+    if(s.status==='nobase'){ toast('Carregue o cadastro primeiro', true); return; }
+    if(!checkInv()) return;
+    const q=readQty(); if(q===null) return;
+    const r=base.rows[s.i]; const ci=convInfo();
+    if(!checkQtyLayout(q*ci.fator)) return;
+    state.items.push({inv:state.inv, ean:r[4], cod:r[0], desc:r[1], bar:s.bar, tipo:s.tipo, qtdInf:q, fator:ci.fator, qty:q*ci.fator, ts:Date.now(), local:state.local, op:state.operador});
+    afterAdd(`Lançado: ${r[0]} × ${fmt(q*ci.fator)}`);
+  }
+  function checkInv(){ if(/^\d{1,5}$/.test(state.inv)) return true; beepErr(); toast('Informe o número do inventário antes de lançar', true); $('inv').focus(); renderInv(); return false; }
+  function checkQtyLayout(v){
+    if(state.cfg.layout!=='1147') return true;
+    if(!Number.isInteger(v)){ toast('O layout 1147 só aceita quantidade inteira', true); $('qty').focus(); return false; }
+    if(v>999999){ toast('Quantidade acima de 999999 não cabe no layout 1147', true); $('qty').focus(); return false; }
+    return true;
+  }
+  function addNF(){
+    if(!checkInv()) return;
+    const q=readQty(); if(q===null) return;
+    const raw=$('code').value.trim();
+    state.items.push({nf:true, inv:state.inv, cod:'', desc:'', bar:raw, tipo:state.mode==='int'?'INT':'?', qtdInf:q, fator:1, qty:q, ts:Date.now(), local:state.local, op:state.operador});
+    afterAdd(`Registrado como não encontrado: ${raw}`);
+  }
+
+  // ================= lista
+  const LIMIT = 40;
+  function render(){
+    const items=state.items, ok=items.filter(i=>!i.nf), nf=items.length-ok.length;
+    $('tLin').textContent = ok.length.toLocaleString('pt-BR');
+    $('tCod').textContent = new Set(ok.map(i=>i.cod)).size.toLocaleString('pt-BR');
+    $('tNF').textContent = nf;
+    $('btnTxtNF').hidden = !nf;
+    $('btnTxtNF').textContent = `Baixar não encontrados (${nf})`;
+    const q=$('search').value.trim().toUpperCase();
+    let view = items.map((it,idx)=>({it,idx})).reverse();
+    if(q) view = view.filter(({it})=> it.cod.includes(q) || String(it.bar).includes(q) || (it.desc||'').toUpperCase().includes(q));
+    const shown=view.slice(0,LIMIT);
+    $('list').innerHTML = !items.length ? '<li class="empty" style="display:block">Nenhuma leitura ainda. A contagem fica salva neste aparelho até você zerar.</li>'
+      : !shown.length ? '<li class="empty" style="display:block">Nada encontrado na contagem.</li>'
+      : shown.map(({it,idx})=>{
+        const t=new Date(it.ts).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+        const qtxt = it.fator>1 ? `<span class="it">${fmt(it.qtdInf)} cx ×${fmt(it.fator)}</span><br>${fmt(it.qty)}` : fmt(it.qty);
+        return `<li class="${it.nf?'nf':''}"><div style="min-width:0"><div class="ic">${it.nf?'NÃO ENCONTRADO · '+esc(it.bar):esc(it.cod)}</div>${it.desc?`<div class="id">${esc(it.desc)}</div>`:''}<div class="it">${t}${it.tipo&&!it.nf?' · '+it.tipo:''}${it.local?' · '+esc(it.local):''}</div></div><span class="iq">${qtxt}</span><button class="del" data-i="${idx}" aria-label="Excluir">Excluir</button></li>`;
+      }).join('');
+    $('listNote').textContent = view.length>LIMIT ? `Mostrando as ${LIMIT} leituras mais recentes de ${view.length.toLocaleString('pt-BR')}. Use a busca para achar uma leitura antiga.` : '';
+    renderPreview();
+  }
+  $('search').oninput = render;
+  $('list').onclick = e => { const b=e.target.closest('.del'); if(!b) return; const i=+b.dataset.i; const it=state.items[i]; state.items.splice(i,1); save(); render(); toast(`Excluído: ${it.cod||it.bar}`); };
+
+  // ================= exportação
+  function sepChar(){ return state.cfg.sep==='\\t' ? '\t' : state.cfg.sep; }
+  const pad = (v,n) => { v=String(v||'').replace(/\D/g,''); if(v.length>n) v=v.slice(-n); return v.padStart(n,'0'); };
+  function eanOf(i){ if(i.ean!==undefined) return i.ean; if(base){ const k=byCod.get(i.cod); if(k!==undefined) return base.rows[k][4]; } return ''; }
+  function build1147(){
+    const m=new Map();
+    for(const i of state.items){ if(i.nf) continue; const inv=i.inv||state.inv; const k=inv+'|'+i.cod; const r=m.get(k)||{inv,cod:i.cod,ean:eanOf(i),qty:0}; r.qty+=i.qty; m.set(k,r); }
+    const cont = state.contagem==='0' ? '0' : state.contagem;
+    const lines=[...m.values()].map(r=> pad(r.ean,14)+pad(r.cod,6)+pad(r.inv,5)+pad(cont,6)+pad(Math.round(r.qty),6));
+    return lines.join('\r\n')+(lines.length?'\r\n':'');
+  }
+  function buildTxt(){
+    if(state.cfg.layout==='1147') return build1147();
+    const c=state.cfg, sep=sepChar();
+    const ok=state.items.filter(i=>!i.nf);
+    let rows;
+    if(c.sum){
+      const m=new Map();
+      for(const i of ok){ const k=(c.withLocal?(i.local||'')+'\u0000':'')+i.cod; const r=m.get(k)||{cod:i.cod,desc:i.desc,local:i.local||'',qty:0}; r.qty+=i.qty; m.set(k,r); }
+      rows=[...m.values()];
+    } else rows=ok.map(i=>({cod:i.cod,desc:i.desc,local:i.local||'',qty:i.qty}));
+    const clean = s => String(s).split(sep).join(' ');
+    const lines=rows.map(r=>{ const a=[]; if(c.withLocal) a.push(clean(r.local)); a.push(r.cod); if(c.withDesc) a.push(clean(r.desc)); a.push(fmt(r.qty,c.dec)); return a.join(sep); });
+    if(c.head){ const h=[]; if(c.withLocal) h.push('LOCAL'); h.push('CODPROD'); if(c.withDesc) h.push('DESCRICAO'); h.push('QUANTIDADE'); lines.unshift(h.join(sep)); }
+    return lines.join('\r\n')+(lines.length?'\r\n':'');
+  }
+  function buildNF(){
+    const sep=sepChar();
+    const lines=state.items.filter(i=>i.nf).map(i=>[i.bar,fmt(i.qty,state.cfg.dec),i.local||'',i.op||'',new Date(i.ts).toLocaleString('pt-BR')].join(sep));
+    lines.unshift(['CODIGO_LIDO','QUANTIDADE','LOCAL','CONTADOR','DATA_HORA'].join(sep));
+    return lines.join('\r\n')+'\r\n';
+  }
+  function stamp(){ const d=new Date(),p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`; }
+  function fileName(prefix){ const loc=(state.local||'').trim().replace(/[^\w-]+/g,'_'); const inv=state.inv||''; const p = prefix==='inventario' && inv ? inv : prefix+(inv?'_'+inv:''); return `${p}${loc?'_'+loc:''}_${stamp()}.txt`; }
+  function renderLayout(){
+    const fixed=state.cfg.layout==='1147';
+    $('sepOpts').hidden=fixed; $('sepOpts2').hidden=fixed;
+    $('layoutNote').textContent = fixed ? 'Cód. barras (14) · cód. produto (6) · inventário (5) · contagem (6) · quantidade (6). Uma linha por produto, quantidade inteira na unidade do produto.' : '';
+  }
+  function renderPreview(){ renderLayout(); const l=buildTxt().split('\r\n').filter(Boolean); $('preview').textContent = l.length ? l.slice(0,8).join('\n')+(l.length>8?`\n… (${l.length.toLocaleString('pt-BR')} linhas)`:'') : '(vazio)'; }
+  function download(text,name){ const blob=new Blob([text],{type:'text/plain;charset=utf-8'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),4000); }
+
+  $('btnTxt').onclick = () => {
+    if(!state.items.some(i=>!i.nf)){ toast('Nada para exportar', true); return; }
+    if(state.cfg.layout==='1147' && !checkInv()) return;
+    download(buildTxt(), fileName('inventario'));
+    const nf=state.items.filter(i=>i.nf).length;
+    toast(nf ? `TXT salvo. Atenção: ${nf} não encontrado(s) ficaram fora — baixe a lista deles.` : 'TXT salvo em Downloads', !!nf);
+  };
+  $('btnTxtNF').onclick = () => download(buildNF(), fileName('nao_encontrados'));
+  $('btnShare').onclick = async () => {
+    if(!state.items.length){ toast('Nada para enviar', true); return; }
+    const files=[];
+    if(state.items.some(i=>!i.nf)) files.push(new File([buildTxt()], fileName('inventario'), {type:'text/plain'}));
+    if(state.items.some(i=>i.nf)) files.push(new File([buildNF()], fileName('nao_encontrados'), {type:'text/plain'}));
+    try{
+      if(navigator.canShare && navigator.canShare({files})) await navigator.share({files, title:'Inventário'});
+      else toast('Este aparelho não envia arquivos direto. Use Baixar TXT.', true);
+    }catch(e){ if(e.name!=='AbortError') toast('Não foi possível enviar. Use Baixar TXT.', true); }
+  };
+  $('btnClear').onclick = () => { $('confirmBox').hidden=false; };
+  $('btnNo').onclick = () => { $('confirmBox').hidden=true; };
+  $('btnYes').onclick = () => { state.items=[]; save(); render(); clearSel(); $('confirmBox').hidden=true; toast('Contagem zerada'); };
+
+  // ================= câmera
+  const cam = { on:false, stream:null, detector:null, zx:null, paused:false, timer:null, last:'', lastAt:0, torch:false };
+  const FORMATS = ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','itf','codabar','qr_code'];
+  $('btnCam').onclick = () => cam.on ? stopCam() : startCam();
+  $('btnTorch').onclick = async () => { const tr=cam.stream&&cam.stream.getVideoTracks()[0]; if(!tr) return; cam.torch=!cam.torch; try{ await tr.applyConstraints({advanced:[{torch:cam.torch}]}); }catch(e){ toast('Lanterna indisponível', true); } };
+
+  async function startCam(){
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ toast('Câmera indisponível. Abra o app por um link https.', true); return; }
+    $('scanner').hidden=false; $('scanMsg').textContent='Abrindo câmera…';
+    try{
+      if('BarcodeDetector' in window){
+        let fm=FORMATS; try{ const sup=await BarcodeDetector.getSupportedFormats(); fm=FORMATS.filter(f=>sup.includes(f)); }catch(e){}
+        cam.detector=new BarcodeDetector({formats:fm});
+        cam.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
+        const v=$('video'); v.srcObject=cam.stream; await v.play();
+        cam.timer=setInterval(nativeTick,180);
+      } else {
+        await loadZXing();
+        const hints=new Map(); hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[ZXing.BarcodeFormat.EAN_13,ZXing.BarcodeFormat.EAN_8,ZXing.BarcodeFormat.UPC_A,ZXing.BarcodeFormat.UPC_E,ZXing.BarcodeFormat.CODE_128,ZXing.BarcodeFormat.CODE_39,ZXing.BarcodeFormat.ITF,ZXing.BarcodeFormat.QR_CODE]);
+        cam.zx=new ZXing.BrowserMultiFormatReader(hints,200);
+        await cam.zx.decodeFromConstraints({video:{facingMode:{ideal:'environment'}}},$('video'),(res)=>{ if(res) onCode(res.getText()); });
+        cam.stream=$('video').srcObject;
+      }
+      cam.on=true; cam.paused=false; $('btnCam').textContent='Fechar câmera';
+      const tr=cam.stream&&cam.stream.getVideoTracks()[0]; const caps=tr&&tr.getCapabilities?tr.getCapabilities():{};
+      $('btnTorch').hidden=!caps.torch;
+      $('scanMsg').textContent='Aponte para o código de barras';
+      if(state.mode!=='bar') setMode('bar');
+    }catch(e){ stopCam(); toast(e&&e.name==='NotAllowedError'?'Permita o uso da câmera nas configurações do navegador.':'Não foi possível abrir a câmera.', true); }
+  }
+  function stopCam(){
+    clearInterval(cam.timer); cam.timer=null;
+    if(cam.zx){ try{cam.zx.reset();}catch(e){} cam.zx=null; }
+    if(cam.stream){ cam.stream.getTracks().forEach(t=>t.stop()); cam.stream=null; }
+    $('video').srcObject=null; cam.on=false; cam.torch=false;
+    $('scanner').hidden=true; $('btnTorch').hidden=true; $('btnCam').textContent='Abrir câmera';
+  }
+  async function nativeTick(){ if(cam.paused||!cam.detector) return; const v=$('video'); if(v.readyState<2) return; try{ const r=await cam.detector.detect(v); if(r&&r.length) onCode(r[0].rawValue); }catch(e){} }
+  function flashScanner(cls){ const s=$('scanner'); s.classList.add(cls); setTimeout(()=>s.classList.remove(cls),cls==='err'?900:300); }
+  function onCode(code){
+    if(cam.paused||!code) return;
+    const now=Date.now(); if(code===cam.last && now-cam.lastAt<1500) return;
+    cam.last=code; cam.lastAt=now; cam.paused=true;
+    $('code').value=code; sel=null;
+    const s=resolve();
+    if(s.status==='ok'){ flashScanner('flash'); $('scanMsg').textContent=`Lido: ${code} — digite a quantidade`; $('qty').focus(); }
+    else if(s.status==='amb'){ $('scanMsg').textContent='Escolha o produto na lista'; }
+    else { $('scanMsg').textContent=`NÃO ENCONTRADO: ${code}`; }
+  }
+  function resumeScan(){ cam.paused=false; cam.lastAt=Date.now(); $('scanMsg').textContent='Aponte para o próximo código'; }
+  // tocar no vídeo depois de um erro libera a câmera para nova leitura
+  $('scanner').onclick=()=>{ if(cam.on && cam.paused){ $('code').value=''; clearSel(); resumeScan(); } };
+  function loadZXing(){ return new Promise((ok,fail)=>{ if(window.ZXing) return ok(); const s=document.createElement('script'); s.src='https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js'; s.onload=ok; s.onerror=()=>fail(new Error('zxing')); document.head.appendChild(s); }); }
+  document.addEventListener('visibilitychange',()=>{ if(document.hidden&&cam.on) stopCam(); });
+
+  // ================= início
+  $('status').textContent = !window.isSecureContext ? 'abra via https p/ câmera' : ('BarcodeDetector' in window ? 'leitor nativo' : 'leitor web');
+  setMode(state.mode||'bar'); renderInv();
+  render();
+  idbGet('base').then(b=>{ if(b&&b.rows){ base=b; buildIndex(); } renderBase(); }).catch(()=>renderBase());
+})();
+</script>
+</body>
+</html>
