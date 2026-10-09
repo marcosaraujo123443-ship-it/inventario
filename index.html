@@ -121,7 +121,7 @@ pre.preview{background:var(--bg);border:1px solid var(--line);border-radius:8px;
       <span class="label">Cadastro de produtos (8539)</span>
       <p id="baseInfo">Carregando…</p>
     </div>
-    <label class="filebtn"><span id="baseBtnTxt">Carregar .csv</span><input type="file" id="baseFile" accept=".csv,.txt,text/csv,text/plain"></label>
+    <label class="filebtn"><span id="baseBtnTxt">Carregar 8539</span><input type="file" id="baseFile" accept=".csv,.txt,.xlsx,.xls,.xlsm,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"></label>
   </section>
 
   <section class="panel" aria-label="Identificação da contagem">
@@ -242,42 +242,77 @@ pre.preview{background:var(--bg);border:1px solid var(--line);border-radius:8px;
     });
   }
 
-  function parseBase(text){
-    // o relatório termina linhas com CRLF; quebra de linha solta (LF) dentro da descrição vira espaço
+  const cellStr = v => typeof v==='number' ? (Number.isInteger(v) ? String(v) : String(v)) : String(v==null?'':v).trim();
+
+  // CSV: o relatório termina linhas com CRLF; quebra de linha solta (LF) dentro da descrição vira espaço
+  function csvToMatrix(text){
     const lines = (text.includes('\r\n') ? text.split('\r\n').map(l=>l.replace(/[\r\n]+/g,' ')) : text.split('\n')).filter(l=>l.trim());
-    const head = lines[0].split(';').map(h=>h.trim().toUpperCase());
+    const h = lines[0]||''; const sep = (h.split(';').length >= h.split(',').length) ? ';' : (h.includes('\t')?'\t':',');
+    const split = line => { if(!line.includes('"')) return line.split(sep); const out=[]; let cur='', q=false;
+      for(let i=0;i<line.length;i++){ const ch=line[i]; if(q){ if(ch==='"'){ if(line[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=ch; }
+        else if(ch==='"' && cur==='') q=true; /* aspas só abrem no início do campo: descrição com 32" fica literal */ else if(ch===sep){ out.push(cur); cur=''; } else cur+=ch; }
+      out.push(cur); return out; };
+    return {matrix: lines.map(split), sep};
+  }
+
+  // Excel (.xlsx/.xls): SheetJS carregado só quando precisa
+  function loadXLSX(){ return new Promise((ok,fail)=>{ if(window.XLSX) return ok(); const sc=document.createElement('script'); sc.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; sc.onload=ok; sc.onerror=()=>fail(new Error('Sem internet para ler Excel. Conecte e tente de novo, ou use o .csv.')); document.head.appendChild(sc); }); }
+  async function xlsxToMatrix(buf){
+    await loadXLSX();
+    const wb = XLSX.read(buf,{type:'array'});
+    // usa a primeira aba que tiver a coluna CODPROD
+    for(const name of wb.SheetNames){
+      const m = XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,raw:true,defval:''});
+      if(m.slice(0,10).some(r=>r.some(c=>String(c).trim().toUpperCase()==='CODPROD'))) return m;
+    }
+    throw new Error('Nenhuma aba do Excel tem a coluna CODPROD (relatório 8539).');
+  }
+
+  function parseBase(matrix, sep){
+    const hi = matrix.slice(0,10).findIndex(r=>r.some(c=>cellStr(c).toUpperCase()==='CODPROD'));
+    if(hi<0) throw new Error('O arquivo precisa ter as colunas CODPROD e EAN (relatório 8539).');
+    const head = matrix[hi].map(h=>cellStr(h).toUpperCase());
     const col = n => head.indexOf(n);
     const c = {cod:col('CODPROD'),desc:col('DESCRICAO'),emb:col('EMBALAGEM'),st:col('STATUS'),ean:col('EAN'),dun:col('DUN'),cx:col('QTUNITCX')};
     if(c.cod<0 || c.ean<0) throw new Error('O arquivo precisa ter as colunas CODPROD e EAN (relatório 8539).');
-    const n = head.length, rows=[];
-    for(let k=1;k<lines.length;k++){
-      let f = lines[k].split(';');
-      if(f.length>n && c.desc>=0){ const extra=f.length-n; f = f.slice(0,c.desc).concat([f.slice(c.desc,c.desc+extra+1).join(';')], f.slice(c.desc+extra+1)); }
-      const cod=(f[c.cod]||'').trim(); if(!/^\d+$/.test(cod)) continue;
-      rows.push([cod,(f[c.desc]||'').trim(),(f[c.emb]||'').trim(),(f[c.st]||'').trim(),(f[c.ean]||'').trim(),c.dun>=0?(f[c.dun]||'').trim():'',Math.max(1,Number((f[c.cx]||'1').replace(',','.'))||1)]);
+    const n = head.length, rows=[]; let sci=0;
+    const bar = v => { v=cellStr(v); if(/e[+-]?\d+$/i.test(v) && /[.,]/.test(v)){ sci++; return ''; } return v.replace(/\.0+$/,''); };
+    for(let k=hi+1;k<matrix.length;k++){
+      let f = matrix[k];
+      if(sep && f.length>n && c.desc>=0){ const extra=f.length-n; f = f.slice(0,c.desc).concat([f.slice(c.desc,c.desc+extra+1).join(sep)], f.slice(c.desc+extra+1)); }
+      const cod=cellStr(f[c.cod]).replace(/\.0+$/,''); if(!/^\d+$/.test(cod)) continue;
+      rows.push([cod, cellStr(f[c.desc]), cellStr(f[c.emb]), cellStr(f[c.st]), bar(f[c.ean]), c.dun>=0?bar(f[c.dun]):'', Math.max(1,Number(cellStr(f[c.cx]||'1').replace(',','.'))||1)]);
     }
     if(!rows.length) throw new Error('Nenhum produto encontrado no arquivo.');
-    return rows;
+    return {rows, sci};
   }
 
   $('baseFile').onchange = async e => {
     const file = e.target.files[0]; if(!file) return;
     $('baseInfo').textContent='Lendo arquivo…';
     try{
-      const buf = await file.arrayBuffer(); let text;
-      try{ text = new TextDecoder('utf-8',{fatal:true}).decode(buf); }catch(_){ text = new TextDecoder('windows-1252').decode(buf); }
-      const rows = parseBase(text);
+      const buf = await file.arrayBuffer();
+      const b = new Uint8Array(buf.slice(0,4));
+      const isExcel = /\.(xlsx|xlsm|xls)$/i.test(file.name) || (b[0]===0x50&&b[1]===0x4B) || (b[0]===0xD0&&b[1]===0xCF);
+      let parsed;
+      if(isExcel){ parsed = parseBase(await xlsxToMatrix(buf)); }
+      else {
+        let text; try{ text = new TextDecoder('utf-8',{fatal:true}).decode(buf); }catch(_){ text = new TextDecoder('windows-1252').decode(buf); }
+        const {matrix, sep} = csvToMatrix(text); parsed = parseBase(matrix, sep);
+      }
+      const rows = parsed.rows;
       base = {rows, name:file.name, date:Date.now()};
       buildIndex(); renderBase();
       try{ await idbSet('base', base); }catch(_){ toast('Cadastro carregado, mas não foi salvo no aparelho', true); }
-      toast(`Cadastro carregado: ${rows.length.toLocaleString('pt-BR')} produtos`);
+      if(parsed.sci) toast(`Atenção: ${parsed.sci} códigos de barras vieram cortados (formato 7,89E+12) e foram ignorados. Gere a 8539 de novo e não salve pelo Excel em .csv.`, true);
+      else toast(`Cadastro carregado: ${rows.length.toLocaleString('pt-BR')} produtos`);
       relink(); resolve(true);
     }catch(err){ toast(err.message||'Não foi possível ler o arquivo', true); renderBase(); }
     e.target.value='';
   };
   function renderBase(){
     const p=$('basePanel');
-    if(!base){ p.classList.add('missing'); $('baseInfo').innerHTML='<span class="warn">Nenhum cadastro carregado.</span> Carregue o .csv da 8539 para vincular os códigos.'; $('baseBtnTxt').textContent='Carregar .csv'; }
+    if(!base){ p.classList.add('missing'); $('baseInfo').innerHTML='<span class="warn">Nenhum cadastro carregado.</span> Carregue a 8539 (.csv ou Excel) para vincular os códigos.'; $('baseBtnTxt').textContent='Carregar 8539'; }
     else { p.classList.remove('missing'); $('baseInfo').innerHTML=`<b>${base.rows.length.toLocaleString('pt-BR')}</b> produtos · ${esc(base.name)}<br><span class="hint">carregado em ${new Date(base.date).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'})}</span>`; $('baseBtnTxt').textContent='Trocar cadastro'; }
   }
   // se o cadastro for trocado, tenta vincular de novo os não encontrados
@@ -337,7 +372,7 @@ pre.preview{background:var(--bg);border:1px solid var(--line);border-radius:8px;
 
   function renderCard(){
     const c=$('card'); c.hidden=false; $('btnNF').hidden=true; $('btnAdd').disabled=false;
-    if(sel.status==='nobase'){ c.className='card bad'; c.innerHTML='<span class="err">Cadastro não carregado</span><span class="sub">Carregue o .csv da 8539 no topo da tela.</span>'; $('btnAdd').disabled=true; }
+    if(sel.status==='nobase'){ c.className='card bad'; c.innerHTML='<span class="err">Cadastro não carregado</span><span class="sub">Carregue a 8539 (.csv ou Excel) no topo da tela.</span>'; $('btnAdd').disabled=true; }
     else if(sel.status==='nf'){
       c.className='card bad';
       c.innerHTML=`<span class="err">Código não encontrado no cadastro</span><span class="cod">${esc(sel.raw)}</span><span class="sub">${state.mode==='int'?'Confira o código interno digitado.':'Confira se leu o código certo ou tente pelo código interno. Se o produto existir fisicamente, registre como não encontrado para tratar depois.'}</span>`;
