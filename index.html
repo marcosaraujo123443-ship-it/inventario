@@ -178,6 +178,7 @@ pre.preview{background:var(--bg);border:1px solid var(--line);border-radius:8px;
       <button class="primary" id="btnTxt">Baixar TXT</button>
       <button id="btnShare">Enviar (WhatsApp, e-mail…)</button>
     </div>
+    <button class="dark" id="btnXlsx">Baixar Excel (contagem + leituras)</button>
     <button id="btnTxtNF" hidden>Baixar não encontrados</button>
     <details>
       <summary>Formato do arquivo</summary>
@@ -256,7 +257,7 @@ pre.preview{background:var(--bg);border:1px solid var(--line);border-radius:8px;
   }
 
   // Excel (.xlsx/.xls): SheetJS carregado só quando precisa
-  function loadXLSX(){ return new Promise((ok,fail)=>{ if(window.XLSX) return ok(); const sc=document.createElement('script'); sc.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; sc.onload=ok; sc.onerror=()=>fail(new Error('Sem internet para ler Excel. Conecte e tente de novo, ou use o .csv.')); document.head.appendChild(sc); }); }
+  function loadXLSX(){ return new Promise((ok,fail)=>{ if(window.XLSX) return ok(); const sc=document.createElement('script'); sc.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; sc.onload=ok; sc.onerror=()=>fail(new Error('Sem internet para usar Excel. Conecte e tente de novo (o TXT funciona sem internet).')); document.head.appendChild(sc); }); }
   async function xlsxToMatrix(buf){
     await loadXLSX();
     const wb = XLSX.read(buf,{type:'array'});
@@ -432,7 +433,7 @@ pre.preview{background:var(--bg);border:1px solid var(--line);border-radius:8px;
     const q=readQty(); if(q===null) return;
     const r=base.rows[s.i]; const ci=convInfo();
     if(!checkQtyLayout(q*ci.fator)) return;
-    state.items.push({inv:state.inv, ean:r[4], cod:r[0], desc:r[1], bar:s.bar, tipo:s.tipo, qtdInf:q, fator:ci.fator, qty:q*ci.fator, ts:Date.now(), local:state.local, op:state.operador});
+    state.items.push({inv:state.inv, ean:r[4], emb:r[2], cod:r[0], desc:r[1], bar:s.bar, tipo:s.tipo, qtdInf:q, fator:ci.fator, qty:q*ci.fator, ts:Date.now(), local:state.local, op:state.operador});
     afterAdd(`Lançado: ${r[0]} × ${fmt(q*ci.fator)}`);
   }
   function checkInv(){ if(/^\d{1,5}$/.test(state.inv)) return true; beepErr(); toast('Informe o número do inventário antes de lançar', true); $('inv').focus(); renderInv(); return false; }
@@ -524,6 +525,37 @@ pre.preview{background:var(--bg);border:1px solid var(--line);border-radius:8px;
     download(buildTxt(), fileName('inventario'));
     const nf=state.items.filter(i=>i.nf).length;
     toast(nf ? `TXT salvo. Atenção: ${nf} não encontrado(s) ficaram fora — baixe a lista deles.` : 'TXT salvo em Downloads', !!nf);
+  };
+  function prodInfo(i){ const k = base ? byCod.get(i.cod) : undefined; const r = k!==undefined ? base.rows[k] : null; return {ean: i.ean!==undefined ? i.ean : (r?r[4]:''), emb: i.emb || (r?r[2]:'')}; }
+  $('btnXlsx').onclick = async () => {
+    if(!state.items.length){ toast('Nada para exportar', true); return; }
+    try{
+      $('btnXlsx').disabled=true; $('btnXlsx').textContent='Gerando Excel…';
+      await loadXLSX();
+      const S = v => v==null ? '' : String(v); // códigos como texto: o Excel não corta para 7,89E+12
+      // aba 1: uma linha por produto
+      const m=new Map();
+      for(const i of state.items){ if(i.nf) continue; const inv=i.inv||state.inv; const k=inv+'|'+i.cod;
+        const r=m.get(k)||{inv,cod:i.cod,desc:i.desc,...prodInfo(i),qty:0,n:0}; r.qty+=i.qty; r.n++; m.set(k,r); }
+      const cont = [['INVENTARIO','CODPROD','EAN','DESCRICAO','EMBALAGEM','QUANTIDADE','LEITURAS']]
+        .concat([...m.values()].map(r=>[S(r.inv),S(r.cod),S(r.ean),r.desc,r.emb,r.qty,r.n]));
+      // aba 2: cada lançamento
+      const tipoTxt = t => t==='DUN'?'DUN (caixa master)':t==='EAN'?'EAN (unidade)':t==='INT'?'Código interno':'';
+      const leit = [['DATA_HORA','INVENTARIO','LOCAL','CONTADOR','CODIGO_LIDO','TIPO_LEITURA','QTD_INFORMADA','FATOR','QUANTIDADE','CODPROD','DESCRICAO','SITUACAO']]
+        .concat(state.items.map(i=>[new Date(i.ts).toLocaleString('pt-BR'),S(i.inv||state.inv),i.local||'',i.op||'',S(i.bar),tipoTxt(i.tipo),i.qtdInf??i.qty,i.fator||1,i.qty,S(i.cod),i.desc||'',i.nf?'NÃO ENCONTRADO':'OK']));
+      const wb=XLSX.utils.book_new();
+      const add=(rows,name,widths)=>{ const ws=XLSX.utils.aoa_to_sheet(rows); ws['!cols']=widths.map(w=>({wch:w})); ws['!autofilter']={ref:XLSX.utils.encode_range({s:{r:0,c:0},e:{r:rows.length-1,c:rows[0].length-1}})}; XLSX.utils.book_append_sheet(wb,ws,name); };
+      add(cont,'Contagem',[11,9,16,42,12,12,9]);
+      add(leit,'Leituras',[18,11,12,14,16,18,13,7,11,9,42,16]);
+      const nf=state.items.filter(i=>i.nf);
+      if(nf.length) add([['CODIGO_LIDO','QUANTIDADE','INVENTARIO','LOCAL','CONTADOR','DATA_HORA']].concat(nf.map(i=>[S(i.bar),i.qty,S(i.inv||state.inv),i.local||'',i.op||'',new Date(i.ts).toLocaleString('pt-BR')])),'Não encontrados',[16,11,11,12,14,18]);
+      const out=XLSX.write(wb,{bookType:'xlsx',type:'array'});
+      const blob=new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=fileName('inventario').replace(/\.txt$/,'.xlsx');
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+      toast('Excel salvo em Downloads');
+    }catch(e){ toast(e.message||'Não foi possível gerar o Excel', true); }
+    finally{ $('btnXlsx').disabled=false; $('btnXlsx').textContent='Baixar Excel (contagem + leituras)'; }
   };
   $('btnTxtNF').onclick = () => download(buildNF(), fileName('nao_encontrados'));
   $('btnShare').onclick = async () => {
